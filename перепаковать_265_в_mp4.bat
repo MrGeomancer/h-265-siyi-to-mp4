@@ -1,6 +1,7 @@
 <# : -- batch part: starts PowerShell on this same file --
 @echo off
-chcp 65001 >nul
+rem NOTE: no "chcp 65001" here on purpose: it switches the console to the
+rem raster "Terminal" font, which has no Cyrillic and shows "?????".
 set "REPACK_SCRIPT=%~f0"
 set "REPACK_ROOT=%~dp0."
 powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = [IO.File]::ReadAllText($env:REPACK_SCRIPT); $s = [regex]::Replace($s, '\\u([0-9a-fA-F]{4})', { param($m) [string][char][Convert]::ToInt32($m.Groups[1].Value, 16) }); Invoke-Expression $s"
@@ -28,6 +29,38 @@ exit /b
 $ErrorActionPreference = 'Continue'
 $Host.UI.RawUI.WindowTitle = '\u041f\u0435\u0440\u0435\u043f\u0430\u043a\u043e\u0432\u043a\u0430 .265 \u0432 .mp4'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
+
+# If the console uses a raster font (no Cyrillic -> "?????"), switch it to Consolas
+try {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class RepackConFont {
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    public struct FONTINFO {
+        public uint cbSize; public uint nFont; public short X; public short Y;
+        public int FontFamily; public int FontWeight;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string FaceName;
+    }
+    [DllImport("kernel32.dll")] static extern IntPtr GetStdHandle(int h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool GetCurrentConsoleFontEx(IntPtr h, bool m, ref FONTINFO i);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool SetCurrentConsoleFontEx(IntPtr h, bool m, ref FONTINFO i);
+    public static string Ensure() {
+        var i = new FONTINFO(); i.cbSize = (uint)Marshal.SizeOf(i);
+        IntPtr h = GetStdHandle(-11);
+        if (!GetCurrentConsoleFontEx(h, false, ref i)) return "n/a";
+        if ((i.FontFamily & 4) != 0) return i.FaceName;          // already TrueType
+        i.FaceName = "Consolas"; i.FontFamily = 54; i.FontWeight = 400; i.X = 0;
+        if (i.Y < 14) i.Y = 16;
+        SetCurrentConsoleFontEx(h, false, ref i);
+        GetCurrentConsoleFontEx(h, false, ref i);
+        return i.FaceName;
+    }
+}
+'@
+    $font = [RepackConFont]::Ensure()
+    if ($env:REPACK_FONTLOG) { "font=$font cp=$([Console]::OutputEncoding.CodePage)" | Out-File -LiteralPath $env:REPACK_FONTLOG -Encoding utf8 }
+} catch { }
 $root = (Resolve-Path -LiteralPath $env:REPACK_ROOT).Path
 $scriptDir = Split-Path -LiteralPath $env:REPACK_SCRIPT
 
