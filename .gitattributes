@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Windows batch files MUST have CRLF line endings: with LF, cmd.exe misreads
+# labels and lines and the script breaks. "-text" makes git store the file
+# byte-for-byte (with its CRLF), so clones on any OS, "Download ZIP" and
+# "Download raw file" on GitHub all get a working .bat.
+*.bat -text
+*.cmd -text
